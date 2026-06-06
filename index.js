@@ -4,6 +4,7 @@ const {
 } = require("@whiskeysockets/baileys");
 
 const qrcode = require("qrcode-terminal");
+const { handleMessage } = require("./lib/handler");
 
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState("auth_info");
@@ -15,9 +16,7 @@ async function startBot() {
   sock.ev.on("creds.update", saveCreds);
 
   sock.ev.on("connection.update", ({ connection, qr }) => {
-    if (qr) {
-      qrcode.generate(qr, { small: true });
-    }
+    if (qr) qrcode.generate(qr, { small: true });
 
     if (connection === "open") {
       console.log("🦅 Night Hawk Bot Connected");
@@ -28,27 +27,7 @@ async function startBot() {
     const msg = messages[0];
     if (!msg.message) return;
 
-    const text =
-      msg.message.conversation ||
-      msg.message.extendedTextMessage?.text;
-
-    if (text === ".ping") {
-      await sock.sendMessage(msg.key.remoteJid, {
-        text: "🦅 Night Hawk is alive!"
-      });
-    }
-
-    if (text === ".menu") {
-      await sock.sendMessage(msg.key.remoteJid, {
-        text: `
-🦅 NIGHT HAWK BOT
-
-Commands:
-.ping
-.menu
-        `
-      });
-    }
+    await handleMessage(sock, msg);
   });
 }
 

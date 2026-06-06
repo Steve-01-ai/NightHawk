@@ -1,1 +1,14 @@
-
+{
+  "name": "nighthawkbot",
+  "version": "1.0.0",
+  "description": "Night Hawk WhatsApp Bot",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "latest",
+    "qrcode-terminal": "latest",
+    "pino": "latest"
+  }
+}

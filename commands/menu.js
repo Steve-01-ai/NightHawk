@@ -1,7 +1,6 @@
-module.exports = {
-  ".menu": async (sock, msg, text, sender) => {
-    return sock.sendMessage(sender, {
-      text: `
+if (cmd === ".menu") {
+  return sock.sendMessage(sender, {
+    text: `
 ╭━━〔 🦅 NIGHT HAWKER 〕━━╮
 ┃ 👤 Owner : Not Set
 ┃ ⚙️ Prefix : .
@@ -19,14 +18,15 @@ module.exports = {
 ╰━━━━━━━━━━━━━━━╯
 
 ╭━━〔 👥 GROUP 〕━━╮
-┃ .antilink on/off
-┃ .antigroupmention on/off
+┃ .antilink on
+┃ .antilink off
+┃ .antigroupmention on
+┃ .antigroupmention off
 ┃ .tagall
 ┃ .hidetag
 ╰━━━━━━━━━━━━━━━╯
 
 ╭━━〔 👑 ADMIN 〕━━╮
-┃ .admin
 ┃ .kick
 ┃ .promote
 ┃ .demote
@@ -45,9 +45,6 @@ module.exports = {
 ┃ .ping
 ┃ .repo
 ╰━━━━━━━━━━━━━━━╯
-
-〘 Night Hawker 〙
 `
-    });
-  }
-};
+  });
+}

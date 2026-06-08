@@ -2,14 +2,12 @@ require('dotenv').config();
 
 const config = {
   botName: 'NIGHT HAWK',
-  botVersion: '1.0.0',
+  botVersion: '2.0.0',
   prefix: '.',
-  // ⚠️ IMPORTANT: Set this in your hosting ENV variables
-  // Leave blank here — bot will ask for it at startup if not set
   ownerNumber: process.env.OWNER_NUMBER || '',
   botPrivate: true,
   sessionPath: './sessions/auth_info_baileys',
-  connectMessage: '🦅 *NIGHT HAWK connected successfully*',
+  connectMessage: '🦅 *NIGHT HAWK v2.0.0 connected successfully*\n\n_Type .menu to get started_',
   pingMessage: '🦅 *Sleeping is for the weak* 💀',
   dbPath: './lib/db.json',
   downloadsDir: './downloads/',

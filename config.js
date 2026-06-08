@@ -4,7 +4,9 @@ const config = {
   botName: 'NIGHT HAWK',
   botVersion: '1.0.0',
   prefix: '.',
-  ownerNumber: process.env.OWNER_NUMBER || '2548000000000',
+  // ⚠️ IMPORTANT: Set this in your hosting ENV variables
+  // Leave blank here — bot will ask for it at startup if not set
+  ownerNumber: process.env.OWNER_NUMBER || '',
   botPrivate: true,
   sessionPath: './sessions/auth_info_baileys',
   connectMessage: '🦅 *NIGHT HAWK connected successfully*',

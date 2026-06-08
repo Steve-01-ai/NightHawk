@@ -25,16 +25,18 @@ const msgRetryCounterCache = new NodeCache();
 const recentMessages = new Map();
 const logger = pino({ level: 'silent' });
 
-// ─── Ensure required folders exist ───────────────────────────
+// ─── Ensure folders exist ─────────────────────────────────────
 fs.ensureDirSync('./sessions');
 fs.ensureDirSync('./downloads');
 fs.ensureDirSync('./lib');
 
+// ─── Terminal input helper ────────────────────────────────────
 function askQuestion(query) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   return new Promise(resolve => rl.question(query, ans => { rl.close(); resolve(ans.trim()); }));
 }
 
+// ─── Banner ───────────────────────────────────────────────────
 function printBanner() {
   console.log('\n╔══════════════════════════════════╗');
   console.log('║   🦅   N I G H T  H A W K   🦅   ║');
@@ -42,6 +44,9 @@ function printBanner() {
   console.log('╚══════════════════════════════════╝\n');
 }
 
+// ─────────────────────────────────────────────────────────────
+//  MAIN BOT FUNCTION
+// ─────────────────────────────────────────────────────────────
 async function startNightHawk() {
   printBanner();
 
@@ -61,7 +66,6 @@ async function startNightHawk() {
     generateHighQualityLinkPreview: true,
     markOnlineOnConnect: true,
     browser: ['NIGHT HAWK', 'Chrome', '120.0.0'],
-    // Keep connection alive
     keepAliveIntervalMs: 30000,
     connectTimeoutMs: 60000,
     retryRequestDelayMs: 2000,
@@ -75,12 +79,20 @@ async function startNightHawk() {
 
     if (!phoneNumber) {
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      phoneNumber = await askQuestion('📱 Enter your WhatsApp number\n   (country code + number, no + or spaces)\n   Example: 2348012345678\n\n> ');
+      phoneNumber = await askQuestion('📱 Enter your WhatsApp number\n   (country code + number, no + or spaces)\n   Example: 254752979317\n\n> ');
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
     }
 
+    // Clean the number — strip everything except digits
     phoneNumber = phoneNumber.replace(/[^0-9]/g, '');
 
+    // Fix leading zero — replace with country code 254 for Kenya
+    // For other countries just make sure OWNER_NUMBER in .env already has country code
+    if (phoneNumber.startsWith('0')) {
+      phoneNumber = '254' + phoneNumber.slice(1);
+    }
+
+    // Validate
     if (!phoneNumber || phoneNumber.length < 7) {
       console.error('❌ Invalid phone number. Please restart and try again.');
       process.exit(1);
@@ -115,7 +127,7 @@ async function startNightHawk() {
 
   sock.ev.on('creds.update', saveCreds);
 
-  // ── Connection state handler ───────────────────────────────
+  // ── Connection state ──────────────────────────────────────
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect } = update;
 
@@ -130,7 +142,7 @@ async function startNightHawk() {
       console.log(`❌ Disconnected. Code: ${statusCode}. Reconnect: ${shouldReconnect}`);
 
       if (statusCode === DisconnectReason.loggedOut) {
-        console.log('⚠️  Session logged out. Clearing session and restarting...');
+        console.log('⚠️  Logged out. Clearing session and restarting...');
         fs.removeSync('./sessions');
         await sleep(2000);
         startNightHawk();
@@ -199,6 +211,8 @@ async function startNightHawk() {
   return sock;
 }
 
+// ─────────────────────────────────────────────────────────────
+//  PER-MESSAGE HANDLER
 // ─────────────────────────────────────────────────────────────
 async function handleMessage(sock, message) {
   if (!message.message) return;
@@ -318,6 +332,9 @@ async function handleMessage(sock, message) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────
+//  BOOT
+// ─────────────────────────────────────────────────────────────
 startNightHawk().catch(err => {
   console.error('[FATAL ERROR]', err);
   process.exit(1);

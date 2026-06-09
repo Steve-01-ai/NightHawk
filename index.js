@@ -25,35 +25,37 @@ const msgRetryCounterCache = new NodeCache();
 const recentMessages = new Map();
 const logger = pino({ level: 'silent' });
 
-// ─── Ensure folders exist ─────────────────────────────────────
 fs.ensureDirSync('./sessions');
 fs.ensureDirSync('./downloads');
 fs.ensureDirSync('./lib');
 
-// ─── Terminal input helper ────────────────────────────────────
 function askQuestion(query) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   return new Promise(resolve => rl.question(query, ans => { rl.close(); resolve(ans.trim()); }));
 }
 
-// ─── Banner ───────────────────────────────────────────────────
-function printBanner() {
+// ─── Strip device suffix from JID ────────────────────────────
+// Baileys adds :0 :1 :5 etc after pairing code login
+// 254752979317:5@s.whatsapp.net → 254752979317
+function cleanNumber(jid) {
+  return (jid || '').replace(/:[0-9]+/, '').replace('@s.whatsapp.net', '').replace('@c.us', '').replace(/[^0-9]/g, '');
+}
+
+function isSenderOwner(senderJid) {
+  return cleanNumber(senderJid) === cleanNumber(config.ownerNumber);
+}
+
+// ─────────────────────────────────────────────────────────────
+async function startNightHawk() {
   console.log('\n╔══════════════════════════════════╗');
   console.log('║   🦅   N I G H T  H A W K   🦅   ║');
   console.log('║          Version  2.0.0           ║');
   console.log('╚══════════════════════════════════╝\n');
-}
-
-// ─────────────────────────────────────────────────────────────
-//  MAIN BOT FUNCTION
-// ─────────────────────────────────────────────────────────────
-async function startNightHawk() {
-  printBanner();
 
   const { state, saveCreds } = await useMultiFileAuthState(config.sessionPath);
   const { version } = await fetchLatestBaileysVersion();
 
-  console.log(`📡 Using WA v${version.join('.')}`);
+  console.log(`📡 WA version: ${version.join('.')}`);
 
   const sock = makeWASocket({
     version,
@@ -65,106 +67,88 @@ async function startNightHawk() {
     msgRetryCounterCache,
     generateHighQualityLinkPreview: true,
     markOnlineOnConnect: true,
-    browser: ['NIGHT HAWK', 'Chrome', '120.0.0'],
+    browser: ['Ubuntu', 'Chrome', '20.0.04'],
     keepAliveIntervalMs: 30000,
     connectTimeoutMs: 60000,
-    retryRequestDelayMs: 2000,
   });
 
-  // ── Pairing code flow ─────────────────────────────────────
+  // ── Pairing code ──────────────────────────────────────────
   if (!sock.authState.creds.registered) {
-    await sleep(2500);
+    await sleep(3000);
 
-    let phoneNumber = process.env.OWNER_NUMBER || '';
+    let phoneNumber = (process.env.OWNER_NUMBER || '').replace(/[^0-9]/g, '');
 
     if (!phoneNumber) {
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      phoneNumber = await askQuestion('📱 Enter your WhatsApp number\n   (country code + number, no + or spaces)\n   Example: 254752979317\n\n> ');
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+      phoneNumber = await askQuestion(
+        '📱 Enter your WhatsApp number\n   Country code + number, no + no spaces\n   Example: 254752979317\n\n> '
+      );
+      phoneNumber = phoneNumber.replace(/[^0-9]/g, '');
     }
 
-    // Clean the number — strip everything except digits
-    phoneNumber = phoneNumber.replace(/[^0-9]/g, '');
-
-    // Fix leading zero — replace with country code 254 for Kenya
-    // For other countries just make sure OWNER_NUMBER in .env already has country code
     if (phoneNumber.startsWith('0')) {
       phoneNumber = '254' + phoneNumber.slice(1);
     }
 
-    // Validate
     if (!phoneNumber || phoneNumber.length < 7) {
-      console.error('❌ Invalid phone number. Please restart and try again.');
+      console.error('❌ Invalid number. Restart and try again.');
       process.exit(1);
     }
 
-    console.log(`⏳ Requesting pairing code for +${phoneNumber}...\n`);
+    console.log(`\n✅ Number: ${phoneNumber}`);
+    console.log('⏳ Generating pairing code...\n');
 
     try {
-      const code = await sock.requestPairingCode(phoneNumber);
-      const formatted = code?.match(/.{1,4}/g)?.join('-') || code;
+      const pairingCode = await sock.requestPairingCode(phoneNumber);
+      const display = pairingCode?.match(/.{1,4}/g)?.join('-') || pairingCode;
 
-      console.log('╔══════════════════════════════════╗');
-      console.log('║      🔑  PAIRING CODE  🔑         ║');
-      console.log('║                                  ║');
-      console.log(`║         ${formatted.padEnd(26)}║`);
-      console.log('║                                  ║');
-      console.log('╚══════════════════════════════════╝\n');
-      console.log('📲 How to link:');
-      console.log('   1. Open WhatsApp on your phone');
-      console.log('   2. Tap ⋮  →  Linked Devices');
-      console.log('   3. Tap  Link a Device');
-      console.log('   4. Tap  Link with phone number instead');
-      console.log(`   5. Enter:  ${formatted}`);
-      console.log('\n⏳ Waiting for you to enter the code...\n');
+      console.log('┌──────────────────────────────┐');
+      console.log('│    🔑  YOUR PAIRING CODE      │');
+      console.log('│                              │');
+      console.log(`│         ${display}           │`);
+      console.log('│                              │');
+      console.log('└──────────────────────────────┘\n');
+      console.log('📲 WhatsApp → ⋮ → Linked Devices → Link a Device');
+      console.log('   → Link with phone number instead');
+      console.log(`   → Type: ${display}\n`);
     } catch (err) {
-      console.error('❌ Pairing code error:', err.message);
-      console.log('🔄 Retrying in 6 seconds...\n');
-      await sleep(6000);
+      console.error('❌ Pairing error:', err.message);
+      await sleep(5000);
       return startNightHawk();
     }
   }
 
   sock.ev.on('creds.update', saveCreds);
 
-  // ── Connection state ──────────────────────────────────────
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect } = update;
 
-    if (connection === 'connecting') {
-      console.log('🔄 Connecting to WhatsApp...');
-    }
+    if (connection === 'connecting') console.log('🔄 Connecting...');
 
     if (connection === 'close') {
-      const statusCode = lastDisconnect?.error?.output?.statusCode;
-      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-
-      console.log(`❌ Disconnected. Code: ${statusCode}. Reconnect: ${shouldReconnect}`);
-
-      if (statusCode === DisconnectReason.loggedOut) {
-        console.log('⚠️  Logged out. Clearing session and restarting...');
+      const code = lastDisconnect?.error?.output?.statusCode;
+      console.log(`❌ Disconnected. Code: ${code}`);
+      if (code === DisconnectReason.loggedOut) {
+        console.log('⚠️  Logged out — clearing session...');
         fs.removeSync('./sessions');
         await sleep(2000);
-        startNightHawk();
-      } else if (shouldReconnect) {
-        await sleep(4000);
-        startNightHawk();
       }
+      await sleep(4000);
+      startNightHawk();
     }
 
     if (connection === 'open') {
-      console.log('✅ NIGHT HAWK is online and ready!\n');
-      console.log(`   Bot Name  : ${config.botName}`);
-      console.log(`   Version   : ${config.botVersion}`);
-      console.log(`   Prefix    : ${config.prefix}`);
-      console.log(`   Owner     : +${config.ownerNumber}\n`);
+      console.log('✅ NIGHT HAWK Connected!\n');
+      console.log(`   Version : ${config.botVersion}`);
+      console.log(`   Prefix  : ${config.prefix}`);
+      console.log(`   Owner   : +${config.ownerNumber}\n`);
 
+      // Send connect message to owner
       const ownerJid = config.ownerNumber + '@s.whatsapp.net';
       await sleep(2000);
       try {
         await sock.sendMessage(ownerJid, { text: config.connectMessage });
-      } catch (err) {
-        console.error('⚠️  Could not send connect message:', err.message);
+      } catch (e) {
+        console.error('⚠️  Connect message failed:', e.message);
       }
     }
   });
@@ -221,15 +205,20 @@ async function handleMessage(sock, message) {
   const from = message.key.remoteJid;
   const sender = message.key.participant || from;
   const isGroup = from.endsWith('@g.us');
-  const ownerJid = config.ownerNumber + '@s.whatsapp.net';
 
-  // Bot is always private — ignore non-owner PMs
-  if (!isGroup && config.botPrivate && sender !== ownerJid) return;
+  // ── Privacy check using cleanNumber so :5 suffix never blocks owner ──
+  const senderIsOwner = isSenderOwner(sender);
+  if (!isGroup && config.botPrivate && !senderIsOwner) return;
 
   const rawText = getMessageText(message);
   const text = rawText?.trim() || '';
 
-  // Cache for anti-delete
+  // Debug log — remove after confirming commands work
+  if (text.startsWith(config.prefix)) {
+    console.log(`[CMD] from: ${sender} | text: ${text} | isOwner: ${senderIsOwner} | isGroup: ${isGroup}`);
+  }
+
+  // Cache message for anti-delete
   if (text) {
     recentMessages.set(message.key.id, { ...message, _text: text });
     if (recentMessages.size > 500) recentMessages.delete(recentMessages.keys().next().value);
@@ -255,7 +244,6 @@ async function handleMessage(sock, message) {
     const parsed = parseCommand(text, config.prefix);
     if (!parsed) return;
     const { command, args } = parsed;
-    const senderIsOwner = isOwner(sender);
 
     switch (command) {
       case 'menu': case 'help':
@@ -311,11 +299,16 @@ async function handleMessage(sock, message) {
   const { command, args } = parsed;
 
   switch (command) {
-    case 'menu': case 'help': return sock.sendMessage(from, { text: menuMain() }, { quoted: message });
-    case 'groupmenu': return sock.sendMessage(from, { text: menuGroup() }, { quoted: message });
-    case 'ownermenu': return sock.sendMessage(from, { text: menuOwner() }, { quoted: message });
-    case 'dlmenu': return sock.sendMessage(from, { text: menuDownload() }, { quoted: message });
-    case 'ping': return sock.sendMessage(from, { text: config.pingMessage }, { quoted: message });
+    case 'menu': case 'help':
+      return sock.sendMessage(from, { text: menuMain() }, { quoted: message });
+    case 'groupmenu':
+      return sock.sendMessage(from, { text: menuGroup() }, { quoted: message });
+    case 'ownermenu':
+      return sock.sendMessage(from, { text: menuOwner() }, { quoted: message });
+    case 'dlmenu':
+      return sock.sendMessage(from, { text: menuDownload() }, { quoted: message });
+    case 'ping':
+      return sock.sendMessage(from, { text: config.pingMessage }, { quoted: message });
     case 'autostatusview': return cmdAutostatusview(sock, message, args);
     case 'antideletepn': return cmdAntideletepn(sock, message, args);
     case 'autorecordtyping': return cmdAutorecordtyping(sock, message, args);
@@ -332,9 +325,6 @@ async function handleMessage(sock, message) {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-//  BOOT
-// ─────────────────────────────────────────────────────────────
 startNightHawk().catch(err => {
   console.error('[FATAL ERROR]', err);
   process.exit(1);
